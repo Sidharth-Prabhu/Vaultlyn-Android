@@ -10,7 +10,11 @@ class FileViewScreen extends StatefulWidget {
   final List<Map<String, dynamic>> decryptedFiles;
   final int initialIndex;
 
-  FileViewScreen({required this.decryptedFiles, required this.initialIndex});
+  const FileViewScreen({
+    super.key,
+    required this.decryptedFiles,
+    required this.initialIndex,
+  });
 
   @override
   _FileViewScreenState createState() => _FileViewScreenState();
@@ -89,9 +93,25 @@ class _FileViewScreenState extends State<FileViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final fileData = widget.decryptedFiles[_currentIndex];
+
     return Scaffold(
-      appBar: AppBar(title: Text(fileData['name'])),
+      backgroundColor: theme.colorScheme.background,
+      appBar: AppBar(
+        elevation: 1,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        title: AnimatedSwitcher(
+          duration: Duration(milliseconds: 300),
+          child: Text(
+            fileData['name'],
+            key: ValueKey(_currentIndex),
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium,
+          ),
+        ),
+      ),
       body: PageView.builder(
         controller: _pageController,
         itemCount: widget.decryptedFiles.length,
@@ -110,9 +130,15 @@ class _FileViewScreenState extends State<FileViewScreen> {
           final bytes = fileData['bytes'] as Uint8List;
 
           if (type == 'image') {
-            return Center(
-              child: InteractiveViewer(
-                child: Image.memory(bytes, fit: BoxFit.contain),
+            return Container(
+              color: Colors.black,
+              child: Center(
+                child: InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
               ),
             );
           } else if (type == 'video') {
@@ -136,55 +162,64 @@ class _FileViewScreenState extends State<FileViewScreen> {
                   allowScrubbing: true,
                   padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.replay_10),
-                      onPressed: _rewind,
-                      tooltip: 'Rewind 10s',
-                    ),
-                    IconButton(
-                      icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-                      onPressed: _togglePlayPause,
-                      tooltip: _isPlaying ? 'Pause' : 'Play',
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.forward_10),
-                      onPressed: _fastForward,
-                      tooltip: 'Fast Forward 10s',
-                    ),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.replay_10),
+                        onPressed: _rewind,
+                        tooltip: 'Rewind 10s',
+                      ),
+                      IconButton(
+                        icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+                        onPressed: _togglePlayPause,
+                        tooltip: _isPlaying ? 'Pause' : 'Play',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.forward_10),
+                        onPressed: _fastForward,
+                        tooltip: 'Fast Forward 10s',
+                      ),
+                    ],
+                  ),
                 ),
               ],
             );
           } else {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.insert_drive_file, size: 80, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text('Unsupported file type', style: TextStyle(fontSize: 16)),
-                  SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    icon: Icon(Icons.open_in_new),
-                    label: Text('Open with another app'),
-                    onPressed: () async {
-                      final tempDir = await getTemporaryDirectory();
-                      final tempFile = File(
-                        '${tempDir.path}/${fileData['name']}',
-                      );
-                      await tempFile.writeAsBytes(bytes);
-                      final result = await OpenFilex.open(tempFile.path);
-                      if (result.type != ResultType.done) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Could not open file')),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.insert_drive_file, size: 80, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text(
+                      'Unsupported file type',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      icon: Icon(Icons.open_in_new),
+                      label: Text('Open with another app'),
+                      onPressed: () async {
+                        final tempDir = await getTemporaryDirectory();
+                        final tempFile = File(
+                          '${tempDir.path}/${fileData['name']}',
                         );
-                      }
-                    },
-                  ),
-                ],
+                        await tempFile.writeAsBytes(bytes);
+                        final result = await OpenFilex.open(tempFile.path);
+                        if (result.type != ResultType.done) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Could not open file')),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
               ),
             );
           }

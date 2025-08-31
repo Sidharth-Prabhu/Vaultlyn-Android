@@ -6,7 +6,11 @@ class ImageViewScreen extends StatefulWidget {
   final List<Map<String, dynamic>> decryptedImages;
   final int initialIndex;
 
-  ImageViewScreen({required this.decryptedImages, required this.initialIndex});
+  const ImageViewScreen({
+    super.key,
+    required this.decryptedImages,
+    required this.initialIndex,
+  });
 
   @override
   _ImageViewScreenState createState() => _ImageViewScreenState();
@@ -31,16 +35,30 @@ class _ImageViewScreenState extends State<ImageViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final images = widget.decryptedImages;
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black87,
-        title: Text(
-          images[_currentIndex]['name'],
-          overflow: TextOverflow.ellipsis,
+        backgroundColor: Colors.black,
+        elevation: 0,
+        title: AnimatedSwitcher(
+          duration: Duration(milliseconds: 300),
+          child: Text(
+            images[_currentIndex]['name'],
+            key: ValueKey(_currentIndex),
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(color: Colors.white),
+          ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+            tooltip: 'Close',
+          ),
+        ],
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -54,12 +72,18 @@ class _ImageViewScreenState extends State<ImageViewScreen> {
           final imageData = images[index];
           final bytes = imageData['bytes'] as Uint8List;
 
-          return Center(
-            child: InteractiveViewer(
-              panEnabled: true,
-              minScale: 1.0,
-              maxScale: 4.0,
-              child: Image.memory(bytes, fit: BoxFit.contain),
+          return Container(
+            color: Colors.black,
+            child: Center(
+              child: InteractiveViewer(
+                panEnabled: true,
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
+              ),
             ),
           );
         },

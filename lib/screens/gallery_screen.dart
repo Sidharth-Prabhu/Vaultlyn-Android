@@ -1,16 +1,17 @@
-// lib/screens/gallery_screen.dart (modernized UI)
+// lib/screens/gallery_screen.dart
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+
 import 'file_view_screen.dart';
 import 'settings_screen.dart';
 import 'lock_screen.dart';
@@ -18,7 +19,7 @@ import 'lock_screen.dart';
 class GalleryScreen extends StatefulWidget {
   final String password;
 
-  GalleryScreen({required this.password});
+  const GalleryScreen({super.key, required this.password});
 
   @override
   _GalleryScreenState createState() => _GalleryScreenState();
@@ -48,9 +49,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _loadAndDecryptFiles() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     final salt = await _getSalt();
     final key = await _deriveKey(salt);
@@ -58,8 +57,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
       encrypt.AES(encrypt.Key(key), mode: encrypt.AESMode.cbc),
     );
 
-    final Directory appDir = await getApplicationDocumentsDirectory();
-    final Directory encryptedDir = Directory('${appDir.path}/encrypted_files');
+    final appDir = await getApplicationDocumentsDirectory();
+    final encryptedDir = Directory('${appDir.path}/encrypted_files');
 
     if (!await encryptedDir.exists()) {
       setState(() {
@@ -95,7 +94,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           'file': file,
           'type': type,
         });
-      } catch (e) {
+      } catch (_) {
         // skip invalid
       }
     }
@@ -117,9 +116,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _pickAndEncryptFiles({bool isMedia = false}) async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     final salt = await _getSalt();
     final key = await _deriveKey(salt);
@@ -127,8 +124,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
       encrypt.AES(encrypt.Key(key), mode: encrypt.AESMode.cbc),
     );
 
-    final Directory appDir = await getApplicationDocumentsDirectory();
-    final Directory encryptedDir = Directory('${appDir.path}/encrypted_files');
+    final appDir = await getApplicationDocumentsDirectory();
+    final encryptedDir = Directory('${appDir.path}/encrypted_files');
     if (!await encryptedDir.exists()) {
       await encryptedDir.create(recursive: true);
     }
@@ -138,26 +135,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
       if (isMedia) {
         final picker = ImagePicker();
         final picked = await picker.pickMultipleMedia();
-        if (picked != null) files.addAll(picked);
+        files.addAll(picked);
       } else {
         final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-        if (result != null)
+        if (result != null) {
           files.addAll(result.files.map((f) => XFile(f.path!)));
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error picking files: $e')));
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       return;
     }
 
     if (files.isEmpty) {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       return;
     }
 
@@ -172,7 +166,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
 
     await _loadAndDecryptFiles();
-
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Files encrypted')));
@@ -192,7 +185,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
             children: [
               ListTile(
                 leading: Icon(Icons.image, color: Colors.blue),
-                title: Text('Select Media (Images/Videos)'),
+                title: Text(
+                  'Select Media (Images/Videos)',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _pickAndEncryptFiles(isMedia: true);
@@ -200,7 +196,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
               ListTile(
                 leading: Icon(Icons.file_present, color: Colors.green),
-                title: Text('Select Files'),
+                title: Text(
+                  'Select Files',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _pickAndEncryptFiles(isMedia: false);
@@ -225,6 +224,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
     });
   }
 
+  void _lockVault() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => LockScreen()),
+    );
+  }
+
   void _showOptions(int index) {
     showModalBottomSheet(
       shape: RoundedRectangleBorder(
@@ -239,7 +245,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
             children: [
               ListTile(
                 leading: Icon(Icons.delete, color: Colors.red),
-                title: Text('Delete'),
+                title: Text(
+                  'Delete',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _deleteFile(index);
@@ -247,7 +256,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
               ListTile(
                 leading: Icon(Icons.share, color: Colors.blue),
-                title: Text('Share'),
+                title: Text(
+                  'Share',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _shareFile(index);
@@ -261,14 +273,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _deleteFile(int index) async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     final fileData = _decryptedFiles[index];
     final file = fileData['file'] as File;
     await file.delete();
-
     await _loadAndDecryptFiles();
   }
 
@@ -335,12 +343,27 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: theme.colorScheme.background,
       appBar: AppBar(
-        elevation: 0,
-        title: Text('My Vault', style: TextStyle(fontWeight: FontWeight.bold)),
+        elevation: 1,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        title: Text(
+          'My Vault',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         actions: [
+          IconButton(
+            icon: Icon(Icons.lock),
+            onPressed: _lockVault,
+            tooltip: 'Lock Vault',
+          ),
           IconButton(
             icon: Icon(Icons.settings),
             onPressed: _goToSettings,
@@ -362,7 +385,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   SizedBox(height: 16),
                   Text(
                     'Decrypting files...',
-                    style: TextStyle(color: Colors.grey[700]),
+                    style: theme.textTheme.bodyMedium,
                   ),
                 ],
               ),
@@ -372,76 +395,81 @@ class _GalleryScreenState extends State<GalleryScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.folder_open, size: 80, color: Colors.grey[400]),
-                  SizedBox(height: 16),
-                  Text(
-                    'No files yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey[700],
-                    ),
+                  Icon(
+                    Icons.folder_open,
+                    size: 80,
+                    color: theme.colorScheme.onSurface.withOpacity(0.3),
                   ),
+                  SizedBox(height: 16),
+                  Text('No files yet', style: theme.textTheme.titleMedium),
                   SizedBox(height: 8),
                   Text(
                     'Tap the + button to add files',
-                    style: TextStyle(color: Colors.grey[500]),
+                    style: theme.textTheme.bodySmall,
                   ),
                 ],
               ),
             )
-          : GridView.builder(
-              padding: EdgeInsets.all(12),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: _decryptedFiles.length,
-              itemBuilder: (context, index) {
-                final fileData = _decryptedFiles[index];
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FileViewScreen(
-                          decryptedFiles: _decryptedFiles,
-                          initialIndex: index,
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                int crossAxisCount = constraints.maxWidth > 600 ? 4 : 3;
+                return GridView.builder(
+                  padding: EdgeInsets.all(12),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: _decryptedFiles.length,
+                  itemBuilder: (context, index) {
+                    final fileData = _decryptedFiles[index];
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FileViewScreen(
+                              decryptedFiles: _decryptedFiles,
+                              initialIndex: index,
+                            ),
+                          ),
+                        );
+                      },
+                      onLongPress: () => _showOptions(index),
+                      child: Card(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 4,
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            Expanded(child: _buildFileThumbnail(fileData)),
+                            Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 4,
+                              ),
+                              child: Text(
+                                fileData['name'],
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
                   },
-                  onLongPress: () => _showOptions(index),
-                  child: Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 2,
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      children: [
-                        Expanded(child: _buildFileThumbnail(fileData)),
-                        Padding(
-                          padding: EdgeInsets.all(6),
-                          child: Text(
-                            fileData['name'],
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.blue.shade600,
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: theme.colorScheme.primary,
         onPressed: _showFileOptions,
-        child: Icon(Icons.add, size: 28),
-        tooltip: 'Add Files',
+        label: Text('Add Files'),
+        icon: Icon(Icons.add),
       ),
     );
   }

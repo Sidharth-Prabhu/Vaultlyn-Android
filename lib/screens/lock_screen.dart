@@ -1,12 +1,16 @@
-// lib/screens/lock_screen.dart (modernized UI)
+// lib/screens/lock_screen.dart
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:local_auth/local_auth.dart';
 import 'gallery_screen.dart';
 
 class LockScreen extends StatefulWidget {
+  const LockScreen({super.key});
+
   @override
   _LockScreenState createState() => _LockScreenState();
 }
@@ -16,11 +20,63 @@ class _LockScreenState extends State<LockScreen> {
   String _confirmPasscode = '';
   bool _isSettingPasscode = false;
   String? _errorMessage;
+  bool _biometricAvailable = false;
+  final LocalAuthentication _auth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
-    _checkIfPasscodeSet();
+    _initAsync();
+  }
+
+  Future<void> _initAsync() async {
+    await _checkIfPasscodeSet();
+    await _checkBiometricAvailability();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showFirstTimeDialog();
+    });
+  }
+
+  Future<void> _checkBiometricAvailability() async {
+    try {
+      final isAvailable = await _auth.canCheckBiometrics;
+      final isDeviceSupported = await _auth.isDeviceSupported();
+      final enrolledBiometrics = await _auth.getAvailableBiometrics();
+      setState(() {
+        _biometricAvailable =
+            isAvailable && isDeviceSupported && enrolledBiometrics.isNotEmpty;
+      });
+    } catch (e) {
+      setState(() => _biometricAvailable = false);
+    }
+  }
+
+  Future<void> _showFirstTimeDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isFirstLaunch = prefs.getBool('is_first_launch') ?? true;
+
+    if (isFirstLaunch) {
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text('Encryption Notice'),
+          content: Text(
+            'Encryption and decryption are performed locally on your device. '
+            'Processing speed may vary depending on the file size and your device performance.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('OK'),
+            ),
+          ],
+        ),
+      );
+      await prefs.setBool('is_first_launch', false);
+    }
   }
 
   Future<void> _checkIfPasscodeSet() async {
@@ -33,15 +89,11 @@ class _LockScreenState extends State<LockScreen> {
 
   Future<void> _setPasscode() async {
     if (_passcode != _confirmPasscode) {
-      setState(() {
-        _errorMessage = 'Passcodes do not match';
-      });
+      setState(() => _errorMessage = 'Passcodes do not match');
       return;
     }
     if (_passcode.length != 4 || !_passcode.contains(RegExp(r'^\d{4}$'))) {
-      setState(() {
-        _errorMessage = 'Enter a 4-digit passcode';
-      });
+      setState(() => _errorMessage = 'Enter a 4-digit passcode');
       return;
     }
 
@@ -67,9 +119,7 @@ class _LockScreenState extends State<LockScreen> {
 
   Future<void> _verifyPasscode() async {
     if (_passcode.length != 4 || !_passcode.contains(RegExp(r'^\d{4}$'))) {
-      setState(() {
-        _errorMessage = 'Enter a 4-digit passcode';
-      });
+      setState(() => _errorMessage = 'Enter a 4-digit passcode');
       return;
     }
 
@@ -89,9 +139,82 @@ class _LockScreenState extends State<LockScreen> {
         ),
       );
     } else {
-      setState(() {
-        _errorMessage = 'Incorrect passcode';
-      });
+      setState(() => _errorMessage = 'Incorrect passcode');
+    }
+  }
+
+  Future<void> _authenticateWithBiometrics() async {
+    try {
+      final didAuthenticate = await _auth.authenticate(
+        localizedReason: 'Authenticate to unlock your vault',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+          useErrorDialogs: true,
+          sensitiveTransaction: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        final prefs = await SharedPreferences.getInstance();
+        final storedHash = prefs.getString('password_hash');
+        final salt = prefs.getString('salt');
+
+        if (storedHash == null || salt == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No passcode set. Please set a passcode first.'),
+            ),
+          );
+          return;
+        }
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                GalleryScreen(password: 'biometric_authenticated'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Biometric authentication failed. Try entering your passcode.',
+            ),
+          ),
+        );
+      }
+    } on PlatformException catch (e) {
+      String errorMsg = 'Biometric authentication failed';
+      switch (e.code) {
+        case 'NotAvailable':
+          errorMsg = 'Biometric authentication is not available on this device';
+          break;
+        case 'NotEnrolled':
+          errorMsg =
+              'No biometrics enrolled. Please set up biometrics in your device settings';
+          break;
+        case 'LockedOut':
+          errorMsg =
+              'Biometric authentication temporarily locked out. Try again later';
+          break;
+        case 'PermanentlyLockedOut':
+          errorMsg =
+              'Biometric authentication permanently locked out. Use passcode instead';
+          break;
+        default:
+          errorMsg = 'Biometric error: ${e.message}';
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMsg)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unexpected error during biometric authentication'),
+        ),
+      );
     }
   }
 
@@ -139,37 +262,55 @@ class _LockScreenState extends State<LockScreen> {
     });
   }
 
+  Widget _buildNumpadButton(String label, {VoidCallback? onPressed}) {
+    return GestureDetector(
+      onTap: onPressed ?? () => _addDigit(label),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              offset: Offset(0, 2),
+              blurRadius: 4,
+            ),
+          ],
+        ),
+        padding: EdgeInsets.all(20),
+        child: label == '⌫'
+            ? Icon(
+                Icons.backspace_outlined,
+                color: Colors.blue.shade700,
+                size: 24,
+              )
+            : Text(
+                label,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+      ),
+    );
+  }
+
   Widget _buildNumpad() {
     return GridView.count(
       crossAxisCount: 3,
       shrinkWrap: true,
-      padding: EdgeInsets.all(24),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
+      physics: NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      mainAxisSpacing: 20,
+      crossAxisSpacing: 20,
       children: [
         for (var i = 1; i <= 9; i++) _buildNumpadButton('$i'),
         _buildNumpadButton('Clear', onPressed: _clear),
         _buildNumpadButton('0'),
         _buildNumpadButton('⌫', onPressed: _backspace),
       ],
-    );
-  }
-
-  Widget _buildNumpadButton(String label, {VoidCallback? onPressed}) {
-    return ElevatedButton(
-      onPressed: onPressed ?? () => _addDigit(label),
-      style: ElevatedButton.styleFrom(
-        shape: CircleBorder(),
-        padding: EdgeInsets.all(24),
-        backgroundColor: Colors.blue.shade50,
-        foregroundColor: Colors.blue.shade800,
-        elevation: 3,
-        shadowColor: Colors.black26,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-      ),
     );
   }
 
@@ -180,14 +321,14 @@ class _LockScreenState extends State<LockScreen> {
         bool filled = index < code.length;
         return AnimatedContainer(
           duration: Duration(milliseconds: 200),
-          margin: EdgeInsets.symmetric(horizontal: 8),
-          width: 16,
-          height: 16,
+          margin: EdgeInsets.symmetric(horizontal: 4),
+          width: 12,
+          height: 12,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: filled ? Colors.blue : Colors.grey.shade400,
             boxShadow: filled
-                ? [BoxShadow(color: Colors.blue.shade200, blurRadius: 6)]
+                ? [BoxShadow(color: Colors.blue.shade200, blurRadius: 3)]
                 : [],
           ),
         );
@@ -197,64 +338,98 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: theme.colorScheme.background,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock, size: 60, color: Colors.blue.shade700),
-              SizedBox(height: 16),
-              Text(
-                _isSettingPasscode
-                    ? 'Set 4-Digit Passcode'
-                    : 'Enter 4-Digit Passcode',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue.shade800,
-                ),
-              ),
-              if (_errorMessage != null) ...[
-                SizedBox(height: 12),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Colors.red, fontSize: 14),
-                ),
-              ],
-              SizedBox(height: 24),
-              _buildDots(_passcode),
-              if (_isSettingPasscode) ...[
-                SizedBox(height: 32),
-                Text(
-                  'Confirm Passcode',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey.shade700,
+                  _isSettingPasscode
+                      ? (_confirmPasscode.isEmpty
+                            ? 'Set a 4-digit Passcode'
+                            : 'Confirm your Passcode')
+                      : 'Enter Passcode',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
-                SizedBox(height: 16),
-                _buildDots(_confirmPasscode, confirm: true),
-              ],
-              SizedBox(height: 40),
-              _buildNumpad(),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _isSettingPasscode ? _setPasscode : _verifyPasscode,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 16),
+                _buildDots(
+                  _isSettingPasscode
+                      ? (_confirmPasscode.isEmpty
+                            ? _passcode
+                            : _confirmPasscode)
+                      : _passcode,
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_errorMessage!, style: TextStyle(color: Colors.red)),
+                ],
+                const SizedBox(height: 24),
+                _buildNumpad(),
+                const SizedBox(height: 24),
+                if (!_isSettingPasscode && _biometricAvailable)
+                  ElevatedButton.icon(
+                    onPressed: _authenticateWithBiometrics,
+                    icon: Icon(Icons.fingerprint),
+                    label: Text('Use Biometrics'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
-                  backgroundColor: Colors.blue.shade600,
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    if (_isSettingPasscode) {
+                      if (_passcode.length == 4 &&
+                          _confirmPasscode.length == 4) {
+                        _setPasscode();
+                      } else {
+                        setState(
+                          () => _errorMessage =
+                              'Enter and confirm 4-digit passcode',
+                        );
+                      }
+                    } else {
+                      if (_passcode.length == 4) {
+                        _verifyPasscode();
+                      } else {
+                        setState(
+                          () => _errorMessage = 'Enter a 4-digit passcode',
+                        );
+                      }
+                    }
+                  },
+                  child: Text(_isSettingPasscode ? 'Set Passcode' : 'Unlock'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.secondary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
-                child: Text(
-                  _isSettingPasscode ? 'Set Passcode' : 'Unlock',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

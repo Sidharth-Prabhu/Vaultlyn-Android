@@ -2,11 +2,11 @@ package com.example.vaultlyn_android
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity // Changed from FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() { // Changed to FlutterFragmentActivity
     private val CHANNEL = "app.channel.shared.data"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

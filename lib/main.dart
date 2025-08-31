@@ -8,6 +8,8 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   Future<bool> _isDisguiseApp() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('disguise_app') ?? false;
