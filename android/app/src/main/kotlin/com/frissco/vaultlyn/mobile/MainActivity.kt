@@ -1,4 +1,4 @@
-package com.example.vaultlyn_android
+package com.frissco.vaultlyn.mobile
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
